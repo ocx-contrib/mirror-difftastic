@@ -1,0 +1,118 @@
+# Shared base for every spec in this repository (difftastic, the structural diff).
+#
+# NOT a spec: it has no name/target/source and is never loaded on its own.
+# Everything a package owns — name, target, source, assets, asset_type,
+# bin_scan, metadata, catalog, tests, versions, announce, annotations — stays
+# in that package's own mirror.yml.
+#
+# ⚠️ `extends:` is a SHALLOW merge of top-level keys. A spec that sets a key
+# below replaces that block OUTRIGHT — there is no per-key merge. `platforms:`
+# is where this bites: it carries BOTH the runner matrix and the container
+# legs, so a child that restates it to tweak one runner silently drops every
+# `containers:` entry. Nothing reds — the legs simply stop existing, and every
+# os.features claim in that spec goes back to being merely asserted. This repo
+# is single-package, so `platforms:` lives HERE and difftastic/mirror.yml does
+# not restate it at all — the trap is structurally eliminated rather than
+# navigated.
+
+skip_prereleases: true
+cascade: true
+
+# A cascade tag (`latest`, `X`, `X.Y`) re-points on every re-publish; without a
+# build segment the new manifest reuses the bare version tag and orphans the
+# prior digest for registry GC, breaking any `@sha256:` pin in a consumer's
+# ocx.lock. The `none` exception applies only where upstream versions ALREADY
+# carry semver build metadata (double-stamping is rejected and silently empties
+# the mirror) — difftastic tags bare semver (`0.69.0`), so it does not apply.
+build_timestamp: date
+
+verify:
+  # Per-ASSET digests, taken from the release API. difftastic's asset filenames
+  # carry no version string at all — `difft-x86_64-apple-darwin.tar.gz` is the
+  # same name in 0.67.0 and 0.69.0 — but the digest is per release asset id and
+  # differs across releases (measured: 0.69.0 sha256:5f5487e7…, 0.68.0
+  # sha256:9c727343… for that identical filename), so this check still binds a
+  # download to the release it was discovered in.
+  github_asset_digest: true
+
+concurrency:
+  # Assets are ~11-12 MB gzipped, unpacking to a ~125 MB single binary — every
+  # supported tree-sitter grammar is compiled in. Keep the parallelism modest.
+  max_downloads: 4
+  max_bundles: 2
+  max_pushes: 2
+  rate_limit_ms: 100
+  max_retries: 3
+  compression_threads: 0
+
+# ─── Platform matrix ────────────────────────────────────────────────────────
+#
+# `os.features` states what an artifact REQUIRES OF THE HOST — it is not a
+# label for how it was built, and a musl target TRIPLE is not a musl
+# requirement. Measured on 0.69.0 (evidence above difftastic/mirror.yml's
+# `assets:` block), difftastic's two Linux arches are ASYMMETRIC:
+#
+#   linux/amd64  — upstream ships BOTH -gnu and -musl. The musl build is
+#                  static-pie: 0 PT_INTERP, 0 DT_NEEDED. It requires nothing of
+#                  the host, so the key is BARE and the musl asset is the one
+#                  carried. `+libc.musl` would be a false requirement that hid
+#                  the package from every glibc host it in fact runs on.
+#   linux/arm64  — upstream ships NO aarch64 musl asset. The only aarch64 Linux
+#                  build is the gnu one, carrying PT_INTERP
+#                  /lib/ld-linux-aarch64.so.1 and NEEDED libc.so.6, so its key
+#                  MUST be `+libc.glibc` (quoted — the `+` needs it in YAML).
+#
+# Container legs are what turn those claims into evidence, and they follow the
+# keys rather than the arches:
+#   bare linux/amd64        → ubuntu + alpine + fedora. The ALPINE leg is the
+#                             only proof the universal claim is honest.
+#   linux/arm64+libc.glibc  → ubuntu + fedora, and NO alpine. The binary
+#                             genuinely cannot load under musl, and the
+#                             renderer rejects an alpine leg under a glibc key
+#                             at exit 65.
+platforms:
+  linux/amd64:
+    runner: ubuntu-latest
+    containers:
+      - { image: "ubuntu:24.04", shell: bash }
+      - { image: "alpine:3.20",  shell: sh }
+      - { image: "fedora:40",    shell: bash }
+  "linux/arm64+libc.glibc":
+    # arm64 container legs run natively — no qemu — so the runner arch must
+    # match the platform or the renderer reds the leg up front.
+    runner: ubuntu-24.04-arm
+    containers:
+      - { image: "ubuntu:24.04", shell: bash }
+      - { image: "fedora:40",    shell: bash }
+  # ─── Staged rollout, pass 2 (darwin) ──────────────────────────────────────
+  # Uncommented together with the matching `assets:` lines in
+  # difftastic/mirror.yml once the Linux legs are end-to-end green. macOS
+  # minutes cost 10× Linux and Windows 2×, and a platform declared here with no
+  # asset still books a runner that reports SUCCESS having tested nothing — so
+  # the platform key and the asset pattern move in the same commit.
+  # darwin/amd64:
+  #   # Intel slice tested on the arm64 macos-14 runner via Rosetta 2 —
+  #   # GitHub's native macos-13 Intel pool is exhausted and deadlocks push.
+  #   runner: macos-14
+  #   prefix: ["arch", "-x86_64"]
+  # darwin/arm64:
+  #   runner: macos-14
+  #   shell: bash
+  # ─── Staged rollout, pass 3 (windows) ─────────────────────────────────────
+  # windows/amd64:
+  #   runner: windows-latest
+  #   shell: pwsh
+  # windows/arm64:
+  #   # Native arm64 Windows runner — the amd64 pool cannot execute an ARM64
+  #   # PE. Upstream does ship difft-aarch64-pc-windows-msvc.zip, so this leg
+  #   # resolves an asset and must exist here or push reds it missing_junit.
+  #   runner: windows-11-arm
+  #   shell: pwsh
+  #
+  # No `containers:` on darwin or windows — those runners have no Linux
+  # container engine, and the key is rejected at spec load.
+
+notify:
+  discord:
+    webhook_secret: OCX_MIRROR_DISCORD_HOOK
+    user_id: "227748867204972545"  # pinged in-message on failures

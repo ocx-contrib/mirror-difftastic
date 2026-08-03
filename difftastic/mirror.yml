@@ -1,0 +1,153 @@
+# ⚠ `extends:` is a SHALLOW merge of TOP-LEVEL KEYS. Setting a key here
+# REPLACES the base's block outright — there is no per-key merge. `platforms:`
+# is deliberately NOT restated below: it carries the container legs that make
+# this spec's Linux keys honest, and this repo is single-package, so the base's
+# block is already this package's measured matrix.
+extends: ../mirror-base.yml
+
+name: difftastic
+
+# Logical index package `difftastic/difftastic` at the physical path
+# `ghcr.io/ocx-contrib/difftastic/difftastic` — slash segments, never
+# hyphen-flattened. Two segments always; `Wilfred` is a personal handle rather
+# than a vendor, so the tool names itself. The first segment must be this
+# repo's own GitHub owner: GITHUB_TOKEN only authorises packages owned by the
+# repository the workflow runs in.
+#
+# NOTE the package name is `difftastic`, but the EXECUTABLE it ships is
+# `difft` — see metadata.json's hand-listed `binaries`.
+target:
+  registry: ghcr.io
+  repository: ocx-contrib/difftastic/difftastic
+
+source:
+  type: github_release
+  owner: Wilfred
+  repo: difftastic
+  # difftastic tags are bare semver — no "v" prefix (e.g. "0.69.0").
+  tag_pattern: "^(?P<version>\\d+\\.\\d+\\.\\d+)$"
+
+# ─── libc gate (Phase 3.5) — the evidence, not the conclusion ───────────────
+#
+# Measured on 0.69.0, one artifact per (os, arch) declared. The two Linux
+# arches are ASYMMETRIC and the asset names never decided it — PT_INTERP did:
+#
+#   $ file difft-x86_64-unknown-linux-musl/difft
+#   ELF 64-bit LSB pie executable, x86-64, static-pie linked, not stripped
+#   $ readelf -l … | grep -c INTERP   → 0
+#   $ readelf -d … | grep NEEDED      → (none)
+#
+#   $ file difft-aarch64-unknown-linux-gnu/difft
+#   ELF 64-bit LSB pie executable, ARM aarch64, dynamically linked,
+#   interpreter /lib/ld-linux-aarch64.so.1, for GNU/Linux 3.7.0
+#   $ readelf -l … | grep -c INTERP   → 1
+#   $ readelf -d … | grep NEEDED      → libgcc_s.so.1, libpthread.so.0,
+#                                        libdl.so.2, libc.so.6,
+#                                        ld-linux-aarch64.so.1
+#   $ readelf -V … | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1  → GLIBC_2.18
+#
+# So: amd64 carries the MUSL asset under a BARE key (static — it requires
+# nothing of the host, and `+libc.musl` would be a false requirement hiding it
+# from every glibc host it runs on); arm64 carries the GNU asset under
+# `linux/arm64+libc.glibc`, because upstream ships no aarch64 musl build at
+# all. Container legs (ubuntu+alpine+fedora on the bare key, ubuntu+fedora and
+# NO alpine on the glibc key) live in ../mirror-base.yml and are what turn
+# those claims into evidence.
+#
+# The amd64 `-gnu` asset exists and is deliberately NOT carried as a second
+# `linux/amd64+libc.glibc` key. Publishing it beside the static build is legal
+# and resolves correctly by specificity scoring, but it only buys something
+# where musl's libc changes behaviour a user can reach — canonically DNS/NSS.
+# difftastic diffs local files and opens no socket.
+#
+# ─── Scope (verified against 0.67.0, the floor, 0.68.0 and 0.69.0) ──────────
+#
+# Upstream publishes exactly SEVEN assets per release and this mirror carries
+# six of them; the seventh is difft-x86_64-unknown-linux-gnu.tar.gz, excluded
+# for the reason above. There are no sidecars at all — no SHA256SUMS, no .sig,
+# no .deb/.rpm/.msi — and no armv7/i686/riscv64/s390x legs, so nothing else is
+# dropped for want of an OCX platform key.
+#
+# ⚠ THE ASSET NAMES CARRY NO VERSION STRING. `difft-x86_64-apple-darwin.tar.gz`
+# is byte-identical as a NAME across 0.67.0, 0.68.0 and 0.69.0 — the version
+# exists only in the tag and the download URL path. The patterns below are
+# therefore exact anchored LITERALS, not the `difft-.*-<triple>` shape a
+# version-bearing upstream would take. `verify.github_asset_digest` still binds
+# each download to its own release: the digest comes from that release's asset
+# id, and the same filename hashes differently per release (0.69.0
+# sha256:5f5487e7…, 0.68.0 sha256:9c727343… for the darwin/amd64 asset).
+#
+# Resolution verified BOTH ways on ALL THREE in-range releases: every pattern
+# below matches EXACTLY one asset in each, and every asset upstream ships is
+# either matched or named above. A pattern matching zero is silently skipped,
+# not an error — it would yield a green run with a missing platform.
+assets:
+  linux/amd64:
+    - "^difft-x86_64-unknown-linux-musl\\.tar\\.gz$"
+  "linux/arm64+libc.glibc":
+    - "^difft-aarch64-unknown-linux-gnu\\.tar\\.gz$"
+  # ─── Staged rollout, pass 2 (darwin) ──────────────────────────────────────
+  # Uncomment with the matching `platforms:` entries in ../mirror-base.yml.
+  # darwin/amd64:
+  #   - "^difft-x86_64-apple-darwin\\.tar\\.gz$"
+  # darwin/arm64:
+  #   - "^difft-aarch64-apple-darwin\\.tar\\.gz$"
+  # ─── Staged rollout, pass 3 (windows) ─────────────────────────────────────
+  # windows/amd64:
+  #   - "^difft-x86_64-pc-windows-msvc\\.zip$"
+  # windows/arm64:
+  #   - "^difft-aarch64-pc-windows-msvc\\.zip$"
+
+# Every archive — tarball and zip alike — is FLAT and holds exactly ONE entry:
+# `difft` (`difft.exe` in the zips), mode 0755, no wrapper directory, no docs,
+# no completions. So strip_components 0 on every platform, the binary lands at
+# the content root, and one metadata.json (PATH = ${installPath}) serves all
+# six. Verified with `tar tvzf` / `unzip -l` on 0.69.0.
+asset_type:
+  type: archive
+  strip_components: 0
+
+# `off` — FORCED by the flat archive, not chosen. The scan only inspects an
+# interface-visible `${installPath}/<dir>` PATH entry, and this archive has no
+# subdirectory to point one at, so `auto` and `verify` both fail spec load at
+# exit 65:
+#
+#   bin_scan is enabled but metadata.json declares no interface-visible
+#   ${installPath}/<dir> PATH entry — the verification would inspect no file
+#   and pass green whatever the archive contains.
+#
+# The `binaries` list in metadata.json is therefore hand-maintained, exactly as
+# that error directs. It is short and stable: `difft` is the archive's only
+# entry on every platform. Quoted so no YAML 1.1 reader folds the bare word
+# into boolean `false`.
+bin_scan: "off"
+
+metadata:
+  default: metadata.json
+
+catalog:
+  logo: logo.svg
+
+versions:
+  min: "0.67.0"
+  new_per_run: 5
+  # Never minute 0 — the fleet staggers polls to avoid a thundering herd.
+  poll_interval: "18 */6 * * *"
+
+tests:
+  # `script:` resolves from the REPOSITORY ROOT — unlike `metadata.default` and
+  # `catalog.logo` above, which resolve against this spec's own directory.
+  - name: smoke
+    script: difftastic/tests/smoke.star
+
+annotations:
+  # From the Phase 1.5 license gate:
+  #   $ gh api repos/Wilfred/difftastic/license --jq '.license.spdx_id'
+  #   MIT
+  org.opencontainers.image.licenses: "MIT"
+
+announce:
+  # Spelled out, not derived from target.repository — the logical name and the
+  # physical path are related by convention only.
+  package: difftastic/difftastic
+  fork: ocx-contrib/index
