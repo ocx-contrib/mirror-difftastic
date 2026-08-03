@@ -86,12 +86,10 @@ assets:
     - "^difft-x86_64-unknown-linux-musl\\.tar\\.gz$"
   "linux/arm64+libc.glibc":
     - "^difft-aarch64-unknown-linux-gnu\\.tar\\.gz$"
-  # ─── Staged rollout, pass 2 (darwin) ──────────────────────────────────────
-  # Uncomment with the matching `platforms:` entries in ../mirror-base.yml.
-  # darwin/amd64:
-  #   - "^difft-x86_64-apple-darwin\\.tar\\.gz$"
-  # darwin/arm64:
-  #   - "^difft-aarch64-apple-darwin\\.tar\\.gz$"
+  darwin/amd64:
+    - "^difft-x86_64-apple-darwin\\.tar\\.gz$"
+  darwin/arm64:
+    - "^difft-aarch64-apple-darwin\\.tar\\.gz$"
   # ─── Staged rollout, pass 3 (windows) ─────────────────────────────────────
   # windows/amd64:
   #   - "^difft-x86_64-pc-windows-msvc\\.zip$"

@@ -84,20 +84,14 @@ platforms:
     containers:
       - { image: "ubuntu:24.04", shell: bash }
       - { image: "fedora:40",    shell: bash }
-  # ─── Staged rollout, pass 2 (darwin) ──────────────────────────────────────
-  # Uncommented together with the matching `assets:` lines in
-  # difftastic/mirror.yml once the Linux legs are end-to-end green. macOS
-  # minutes cost 10× Linux and Windows 2×, and a platform declared here with no
-  # asset still books a runner that reports SUCCESS having tested nothing — so
-  # the platform key and the asset pattern move in the same commit.
-  # darwin/amd64:
-  #   # Intel slice tested on the arm64 macos-14 runner via Rosetta 2 —
-  #   # GitHub's native macos-13 Intel pool is exhausted and deadlocks push.
-  #   runner: macos-14
-  #   prefix: ["arch", "-x86_64"]
-  # darwin/arm64:
-  #   runner: macos-14
-  #   shell: bash
+  darwin/amd64:
+    # Intel slice tested on the arm64 macos-14 runner via Rosetta 2 —
+    # GitHub's native macos-13 Intel pool is exhausted and deadlocks push.
+    runner: macos-14
+    prefix: ["arch", "-x86_64"]
+  darwin/arm64:
+    runner: macos-14
+    shell: bash
   # ─── Staged rollout, pass 3 (windows) ─────────────────────────────────────
   # windows/amd64:
   #   runner: windows-latest
