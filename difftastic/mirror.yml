@@ -129,7 +129,7 @@ versions:
   min: "0.67.0"
   new_per_run: 5
   # Never minute 0 — the fleet staggers polls to avoid a thundering herd.
-  poll_interval: "18 */6 * * *"
+  poll_interval: "51 1-23/6 * * *"
 
 tests:
   # `script:` resolves from the REPOSITORY ROOT — unlike `metadata.default` and
