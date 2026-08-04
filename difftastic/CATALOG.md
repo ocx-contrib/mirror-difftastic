@@ -27,17 +27,6 @@ Jujutsu and Fossil.
 
 Note the executable is `difft`, not `difftastic`.
 
-## Install with ocx
-
-```sh
-ocx install ocx.sh/difftastic/difftastic
-```
-
-```sh
-# or pin a specific version
-ocx install ocx.sh/difftastic/difftastic:0.69.0
-```
-
 ## Links
 
 - [difftastic manual](https://difftastic.wilfred.me.uk/)
